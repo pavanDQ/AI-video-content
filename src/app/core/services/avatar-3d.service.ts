@@ -14,13 +14,40 @@ export interface Avatar3dFrame {
   speaking: boolean;
 }
 
-/** Our viseme set -> the model's Oculus viseme morph targets. */
-const VISEME_MORPHS: Record<string, string> = {
-  REST: 'viseme_sil', MBP: 'viseme_PP', FV: 'viseme_FF', TH: 'viseme_TH', SS: 'viseme_SS',
-  DD: 'viseme_DD', KG: 'viseme_kk', RR: 'viseme_RR', AA: 'viseme_aa', E: 'viseme_E',
-  I: 'viseme_I', O: 'viseme_O', U: 'viseme_U'
+/**
+ * How each of our visemes is formed on this face, as [morph, amount] pairs.
+ *
+ * The model's stock Oculus shapes drop the lower lip and bare the lower teeth
+ * and gum, which reads as a grimace. So each sound uses a gentler viseme plus
+ * lip corrections that lift the upper lip and roll the lower lip over the
+ * lower teeth: in real speech it is mostly the upper teeth that show. A touch
+ * of smile on the spread sounds keeps the lift from reading as a sneer.
+ */
+const MOUTH_RECIPES: Record<string, [string, number][]> = {
+  REST: [],
+  MBP: [['viseme_PP', 1], ['mouthPressLeft', 0.2], ['mouthPressRight', 0.2]],
+  FV: [['viseme_FF', 0.6], ['mouthRollLower', 0.6], ['mouthUpperUpLeft', 0.35], ['mouthUpperUpRight', 0.35]],
+  TH: [['viseme_TH', 0.55], ['mouthUpperUpLeft', 0.3], ['mouthUpperUpRight', 0.3]],
+  SS: [['viseme_SS', 0.4], ['mouthUpperUpLeft', 0.45], ['mouthUpperUpRight', 0.45], ['mouthRollLower', 0.3],
+    ['mouthShrugLower', 0.2], ['mouthSmileLeft', 0.15], ['mouthSmileRight', 0.15]],
+  DD: [['viseme_DD', 0.45], ['mouthUpperUpLeft', 0.3], ['mouthUpperUpRight', 0.3], ['mouthRollLower', 0.45],
+    ['mouthSmileLeft', 0.1], ['mouthSmileRight', 0.1]],
+  KG: [['viseme_kk', 0.5], ['mouthUpperUpLeft', 0.2], ['mouthUpperUpRight', 0.2], ['mouthRollLower', 0.35]],
+  RR: [['viseme_RR', 0.55], ['mouthFunnel', 0.2]],
+  AA: [['viseme_aa', 0.7]],
+  E: [['viseme_E', 0.45], ['mouthUpperUpLeft', 0.45], ['mouthUpperUpRight', 0.45], ['mouthRollLower', 0.6],
+    ['mouthSmileLeft', 0.15], ['mouthSmileRight', 0.15]],
+  I: [['viseme_I', 0.4], ['mouthUpperUpLeft', 0.45], ['mouthUpperUpRight', 0.45], ['mouthRollLower', 0.55],
+    ['mouthSmileLeft', 0.15], ['mouthSmileRight', 0.15]],
+  O: [['viseme_O', 0.75], ['mouthFunnel', 0.2], ['mouthRollLower', 0.3], ['mouthUpperUpLeft', 0.2], ['mouthUpperUpRight', 0.2]],
+  U: [['viseme_U', 0.8], ['mouthPucker', 0.2]]
 };
-const ALL_VISEME_MORPHS = Array.from(new Set(Object.values(VISEME_MORPHS)));
+/** The resting mouth: lips gently closed over the teeth. */
+// Only a light lower-lip roll: pressing or closing shapes swallow the upper lip.
+const REST_MOUTH: [string, number][] = [['mouthRollLower', 0.15]];
+const MOUTH_MORPHS = Array.from(new Set(
+  [...Object.values(MOUTH_RECIPES).flat(), ...REST_MOUTH].map(([morph]) => morph)
+));
 
 /** Scrub-top colour for the presenter's outfit. */
 const SCRUBS = 0x1d5f68;
@@ -115,18 +142,20 @@ export class Avatar3dService {
     const seconds = frame.timeMs / 1000;
     const energy = frame.speaking ? frame.mouth.energy : 0;
 
-    // Mouth: blended visemes from the lip-sync timeline.
-    for (const name of ALL_VISEME_MORPHS) this.setMorph(loaded, name, 0);
+    // Mouth: blended visemes from the lip-sync timeline, via the recipes.
+    for (const name of MOUTH_MORPHS) this.setMorph(loaded, name, 0);
     for (const [viseme, weight] of Object.entries(frame.mouth.visemes)) {
-      const morph = VISEME_MORPHS[viseme];
-      if (morph) this.addMorph(loaded, morph, Math.min(1, weight));
+      for (const [morph, amount] of MOUTH_RECIPES[viseme] || []) {
+        this.addMorph(loaded, morph, Math.min(1, weight) * amount);
+      }
     }
     // The model's neutral face has parted lips; close them softly at rest
-    // (idle, and the brief rests between words).
+    // (idle, and the brief rests between words), fading out as speech builds.
     const active = Object.entries(frame.mouth.visemes)
       .filter(([viseme]) => viseme !== 'REST')
       .reduce((sum, [, weight]) => sum + weight, 0);
-    this.addMorph(loaded, 'viseme_PP', Math.max(0, 0.35 - active));
+    const resting = Math.max(0, 1 - active / 0.35);
+    for (const [morph, amount] of REST_MOUTH) this.addMorph(loaded, morph, amount * resting);
     // A touch of jaw on loud syllables adds weight the visemes alone lack.
     this.setMorph(loaded, 'jawOpen', Math.min(0.25, energy * 0.18));
 
@@ -149,8 +178,8 @@ export class Avatar3dService {
     this.setMorph(loaded, gazeX > 0 ? 'eyeLookInRight' : 'eyeLookOutRight', Math.abs(gazeX));
 
     // Expression: a hint of warmth (more parts the lips), brows lift on emphasis.
-    this.setMorph(loaded, 'mouthSmileLeft', 0.04);
-    this.setMorph(loaded, 'mouthSmileRight', 0.04);
+    this.addMorph(loaded, 'mouthSmileLeft', 0.04);
+    this.addMorph(loaded, 'mouthSmileRight', 0.04);
     this.setMorph(loaded, 'browInnerUp', 0.05 + energy * 0.25);
 
     // Head: two out-of-phase sways plus a nod on stressed syllables.
@@ -250,7 +279,8 @@ export class Avatar3dService {
   /**
    * Adapt the stock model to a clinical setting: the logo T-shirt becomes a
    * plain scrub top (its normal map keeps the fabric folds), and the source
-   * texture's over-saturated red irises become a natural brown.
+   * texture's over-saturated red irises become a natural brown, and the teeth
+ * and tongue are toned down to sit naturally inside the mouth.
    */
   private dressForClinic(model: THREE.Object3D): void {
     model.traverse(object => {
@@ -263,6 +293,13 @@ export class Avatar3dService {
         material.needsUpdate = true;
       } else if (/high-poly/i.test(material.name) && material.map) {
         material.map = this.naturalIris(material.map);
+        material.needsUpdate = true;
+      } else if (/teeth|tongue/i.test(material.name)) {
+        // Inside the mouth there is little light: without this the teeth
+        // catch the full studio reflection and glow flat white.
+        material.color.setRGB(0.86, 0.82, 0.77);
+        material.envMapIntensity = 0.25;
+        material.roughness = Math.max(material.roughness, 0.55);
         material.needsUpdate = true;
       }
     });

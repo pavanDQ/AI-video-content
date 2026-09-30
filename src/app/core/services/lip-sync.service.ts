@@ -52,6 +52,17 @@ const BLEND_MS = 55;
 /** Lip closures must fully form even on quiet syllables, or "b" reads as "a". */
 const CLOSURES = new Set(['MBP', 'FV']);
 
+/**
+ * Co-articulation window for the blended viseme weights, as [offset ms,
+ * weight] pairs. Real mouths flow through sounds and never fully form the
+ * short ones, so each moment averages the ~180 ms around it; centred slightly
+ * ahead because the lips start moving just before the sound is heard. Lip
+ * closures use a narrower window so "p", "b", "m" still seal.
+ */
+const LEAD_MS = 20;
+const WIDE_WINDOW: [number, number][] = [[-90, 0.2], [-60, 0.45], [-30, 0.8], [0, 1], [30, 0.8], [60, 0.45], [90, 0.2]];
+const NARROW_WINDOW: [number, number][] = [[-30, 0.5], [0, 1], [30, 0.5]];
+
 /** The mouth state at one instant, ready to draw. */
 export interface MouthState extends MouthShape {
   /** Jaw rotation in radians, driven by how open the mouth is. */
@@ -154,23 +165,49 @@ export class LipSyncService {
     const isConsonant = ['MBP', 'FV', 'TH', 'SS', 'DD', 'KG'].includes(current.viseme);
     const gain = isConsonant ? 0.55 + energy * 0.45 : 0.25 + energy * 0.75;
 
-    const visemes: Record<string, number> = {};
-    const strength = (viseme: string) => (CLOSURES.has(viseme) ? 0.9 + energy * 0.1 : gain);
-    visemes[current.viseme] = (1 - progress) * strength(current.viseme);
-    if (next && progress > 0) {
-      visemes[next.viseme] = (visemes[next.viseme] || 0) + progress * strength(next.viseme);
-    }
-
     const height = shape.height * gain;
     return {
       ...shape,
       height,
       width: shape.width * (0.9 + 0.1 * gain),
       jaw: height * 0.09,
-      energy,
+      energy: this.smoothed(offset => this.sampleEnvelope(envelope, timeMs + offset), WIDE_WINDOW),
       viseme: current.viseme,
-      visemes
+      visemes: this.coarticulated(timeline, envelope, timeMs)
     };
+  }
+
+  /** Viseme weights averaged over the co-articulation windows. */
+  private coarticulated(timeline: VisemeFrame[], envelope: Float32Array, timeMs: number): Record<string, number> {
+    const result: Record<string, number> = {};
+    const total = WIDE_WINDOW.reduce((sum, [, weight]) => sum + weight, 0);
+    for (const [offset, weight] of WIDE_WINDOW) {
+      const at = timeMs + LEAD_MS + offset;
+      const frame = timeline[this.frameIndexAt(timeline, at)];
+      if (CLOSURES.has(frame.viseme)) continue;
+      result[frame.viseme] = (result[frame.viseme] || 0) + (weight / total) * this.strength(frame.viseme, envelope, at);
+    }
+    // Closures take the peak, not the average: a 50 ms "p" must still seal.
+    for (const [offset, weight] of NARROW_WINDOW) {
+      const at = timeMs + LEAD_MS + offset;
+      const frame = timeline[this.frameIndexAt(timeline, at)];
+      if (!CLOSURES.has(frame.viseme)) continue;
+      result[frame.viseme] = Math.max(result[frame.viseme] || 0, weight * this.strength(frame.viseme, envelope, at));
+    }
+    return result;
+  }
+
+  /** How strongly a viseme forms at a moment, from the voice's loudness. */
+  private strength(viseme: string, envelope: Float32Array, timeMs: number): number {
+    if (CLOSURES.has(viseme)) return 0.9 + this.sampleEnvelope(envelope, timeMs) * 0.1;
+    const energy = this.sampleEnvelope(envelope, timeMs);
+    const isConsonant = ['TH', 'SS', 'DD', 'KG'].includes(viseme);
+    return isConsonant ? 0.55 + energy * 0.45 : 0.25 + energy * 0.75;
+  }
+
+  private smoothed(sample: (offsetMs: number) => number, window: [number, number][]): number {
+    const total = window.reduce((sum, [, weight]) => sum + weight, 0);
+    return window.reduce((sum, [offset, weight]) => sum + sample(offset) * weight, 0) / total;
   }
 
   /** Binary search: timelines run to hundreds of frames per scene. */

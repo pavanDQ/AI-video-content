@@ -9,4 +9,5 @@ as stated in the TalkingHead README. No attribution required; commercial use all
 Changes made for this app (glTF-Transform 3.10):
 - textures resized to 1024 px and converted to WebP
 - unused morph targets removed; kept the Oculus visemes plus the ARKit
-  blink, gaze, brow, smile, jaw and cheek shapes the presenter drives
+  blink, gaze, brow, smile, jaw, cheek and lip shapes (upper-lip raise,
+  lower-lip roll, press, funnel, pucker) the presenter drives
