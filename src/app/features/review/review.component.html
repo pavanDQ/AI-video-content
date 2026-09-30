@@ -1,0 +1,124 @@
+<div class="review">
+  <section class="card queue">
+    <div class="card-head">
+      <div><h2>Review queue</h2><p>Nothing reaches doctors until a reviewer approves it.</p></div>
+      <button class="ghost small" (click)="reload()">Refresh</button>
+    </div>
+
+    <label class="filter">Show
+      <select [(ngModel)]="filter" (ngModelChange)="reload()">
+        <option value="in_review">Awaiting review</option>
+        <option value="changes_requested">Changes requested</option>
+        <option value="approved">Approved</option>
+        <option value="rejected">Rejected</option>
+        <option value="">Everything</option>
+      </select>
+    </label>
+
+    <p class="muted" *ngIf="loading">Loading…</p>
+    <p class="error" *ngIf="error && !selected">{{ error }}</p>
+
+    <div class="empty" *ngIf="!loading && !videos.length">
+      <div class="empty-mark">◷</div>
+      <h3>Nothing here</h3>
+      <p>Generate a video in the Studio and submit it for review.</p>
+    </div>
+
+    <ul class="queue-list">
+      <li *ngFor="let video of videos" [class.active]="selected?.id === video.id" (click)="select(video)">
+        <div class="queue-top">
+          <strong>{{ video.title }}</strong>
+          <span class="status" [class]="video.status">{{ statusLabels[video.status] }}</span>
+        </div>
+        <div class="queue-meta">
+          {{ video.category }} · {{ video.storyboard.length }} scenes
+          <span *ngIf="video.media"> · {{ formatDuration(video.media.durationMs) }}</span>
+        </div>
+        <div class="queue-meta">by {{ video.createdBy }} · {{ formatDate(video.createdAt) }}</div>
+        <div class="flag" *ngIf="video.needsRerender">Narration edited — needs re-render</div>
+      </li>
+    </ul>
+  </section>
+
+  <section class="card detail" *ngIf="selected as video">
+    <div class="card-head">
+      <div>
+        <h2>{{ video.title }}</h2>
+        <p>{{ video.summary || 'No summary supplied.' }}</p>
+      </div>
+      <span class="status" [class]="video.status">{{ statusLabels[video.status] }}</span>
+    </div>
+
+    <video *ngIf="video.media" controls [src]="previewUrl(video)"></video>
+    <p class="muted" *ngIf="!video.media">No video file was uploaded with this submission.</p>
+
+    <div class="settings-grid">
+      <div><span>Voice</span><strong>{{ video.settings.voice || '—' }}</strong></div>
+      <div><span>Avatar</span><strong>{{ video.settings.avatar || '—' }}</strong></div>
+      <div><span>Lip sync</span><strong>{{ video.settings.lipSync ? 'On' : 'Off' }}</strong></div>
+      <div><span>Resolution</span><strong>{{ video.settings.resolution || '—' }}</strong></div>
+    </div>
+
+    <div class="flags" *ngIf="video.aiReviewNotes.length">
+      <strong>Flagged by the script writer</strong>
+      <ul><li *ngFor="let note of video.aiReviewNotes">{{ note }}</li></ul>
+    </div>
+
+    <h3>Script</h3>
+    <p class="hint">Correct any narration here. Edits are recorded against your review and mark the
+      video for re-rendering, since the existing audio no longer matches.</p>
+
+    <div class="script">
+      <div class="script-scene" *ngFor="let scene of video.storyboard; let i = index">
+        <div class="script-head">
+          <span class="num">{{ i + 1 }}</span>
+          <strong>{{ scene.title }}</strong>
+          <span class="tag">{{ scene.visualType }}</span>
+          <span class="tag edited" *ngIf="scene.editedByReviewer">previously edited</span>
+        </div>
+        <textarea rows="3"
+          [ngModel]="narrationFor(i, scene.narration)"
+          (ngModelChange)="editNarration(i, $event)"></textarea>
+      </div>
+    </div>
+
+    <h3>Your decision</h3>
+    <div class="grid-2">
+      <label>Your name <input [(ngModel)]="reviewerName" placeholder="Dr. …" /></label>
+      <label>Edits pending <input [value]="editedCount + ' scene(s)'" readonly /></label>
+    </div>
+    <label>Review notes
+      <textarea [(ngModel)]="reviewNotes" rows="3"
+        placeholder="Required when requesting changes or rejecting."></textarea>
+    </label>
+
+    <div class="decisions">
+      <button class="approve" [disabled]="saving" (click)="decide('approve')">Approve &amp; publish</button>
+      <button class="changes" [disabled]="saving" (click)="decide('request_changes')">Request changes</button>
+      <button class="reject" [disabled]="saving" (click)="decide('reject')">Reject</button>
+    </div>
+
+    <p class="error" *ngIf="error">{{ error }}</p>
+    <p class="ok" *ngIf="message">{{ message }}</p>
+
+    <h3>History</h3>
+    <ol class="history">
+      <li *ngFor="let entry of video.history">
+        <strong>{{ entry.action }}</strong>
+        <span *ngIf="entry.by"> by {{ entry.by }}</span>
+        <span class="when">{{ formatDate(entry.at) }}</span>
+        <div class="note" *ngIf="entry.notes">“{{ entry.notes }}”</div>
+      </li>
+    </ol>
+
+    <button class="ghost small danger" (click)="remove(video)">Delete this submission</button>
+  </section>
+
+  <section class="card detail placeholder" *ngIf="!selected">
+    <div class="empty">
+      <div class="empty-mark">⌖</div>
+      <h3>Select a submission</h3>
+      <p>Pick a video from the queue to watch it, correct the script, and record a decision.</p>
+    </div>
+  </section>
+</div>

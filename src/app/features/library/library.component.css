@@ -1,0 +1,84 @@
+.library { max-width: 1560px; margin: 0 auto; display: grid; gap: 20px; }
+
+.search { max-width: 380px; margin-bottom: 18px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
+  gap: 18px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  transition: box-shadow .15s ease, transform .15s ease;
+}
+.tile:hover { box-shadow: 0 8px 22px rgba(15, 47, 79, .1); transform: translateY(-2px); }
+.tile h3 { margin: 12px 0 5px; font-size: 15px; line-height: 1.35; }
+
+.thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #0f2f4f, #2f6fad);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.play {
+  width: 46px; height: 46px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .9);
+  color: var(--accent-dark);
+  font-size: 15px;
+  padding-left: 3px;
+}
+.len {
+  position: absolute;
+  right: 8px; bottom: 8px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgba(9, 20, 34, .8);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.summary {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.meta { display: flex; align-items: center; gap: 9px; font-size: 11.5px; color: var(--muted); }
+.badge {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-weight: 700;
+}
+
+.approval {
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.tile-actions { display: flex; gap: 8px; margin-top: 11px; }
+.tile-actions > * { flex: 1; }
+.link { display: grid; place-items: center; text-decoration: none; border-radius: 9px; font-weight: 700; }
+
+.player video { max-height: 70vh; }

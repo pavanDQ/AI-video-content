@@ -1,0 +1,28 @@
+<main class="page">
+  <header class="hero">
+    <div>
+      <span class="eyebrow">Angular 16 · Node 18 · AI video pipeline</span>
+      <h1>AI Medical Video Studio</h1>
+      <p>
+        AI writes the script, an AI voice narrates it, and an AI avatar presents it with lip sync driven
+        by the narration audio. The rendered file is downloadable and is only served to doctors after a
+        clinician approves it.
+      </p>
+    </div>
+    <div class="pipeline">
+      <span>AI script</span><i>→</i><span>AI voice</span><i>→</i><span>Avatar + lip sync</span>
+      <i>→</i><span>Animated visuals</span><i>→</i><span>Review</span>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button *ngFor="let item of tabs" [class.active]="tab === item.id" (click)="select(item.id)">
+      <strong>{{ item.label }}</strong>
+      <small>{{ item.hint }}</small>
+    </button>
+  </nav>
+
+  <app-studio *ngIf="tab === 'studio'"></app-studio>
+  <app-review *ngIf="tab === 'review'"></app-review>
+  <app-library *ngIf="tab === 'library'"></app-library>
+</main>

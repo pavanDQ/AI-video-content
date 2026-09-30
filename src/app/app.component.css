@@ -1,0 +1,71 @@
+.page { min-height: 100vh; padding: 30px 30px 50px; }
+
+.hero {
+  max-width: 1560px;
+  margin: 0 auto 20px;
+  padding: 30px 34px;
+  border-radius: 22px;
+  background: linear-gradient(120deg, #0f2f4f, #1d4f80);
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+.hero h1 { margin: 8px 0 10px; font-size: 34px; }
+.hero p { max-width: 720px; margin: 0; color: #cfe3f7; line-height: 1.65; font-size: 14px; }
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #8fc4f2;
+}
+
+/* The pipeline chips spell out what "AI generated" actually means here. */
+.pipeline {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  max-width: 380px;
+}
+.pipeline span {
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .13);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pipeline i { color: #7fb4e4; font-style: normal; font-size: 12px; }
+
+.tabs {
+  max-width: 1560px;
+  margin: 0 auto 20px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.tabs button {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 20px;
+  border-radius: 13px;
+  background: #fff;
+  color: #46566b;
+  text-align: left;
+  box-shadow: 0 3px 14px rgba(15, 47, 79, .06);
+}
+.tabs button small { font-weight: 500; font-size: 11px; color: var(--muted); }
+.tabs button.active { background: var(--accent-dark); color: #fff; }
+.tabs button.active small { color: #a8cdee; }
+
+@media (max-width: 900px) {
+  .page { padding: 16px 16px 36px; }
+  .hero { padding: 22px; }
+  .hero h1 { font-size: 26px; }
+  .pipeline { max-width: none; }
+}

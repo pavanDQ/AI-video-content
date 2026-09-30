@@ -1,0 +1,248 @@
+<div class="studio">
+  <!-- ------------------------------------------------------------ inputs -->
+  <section class="card panel">
+    <h2>1 · Content</h2>
+
+    <label>Category
+      <select [(ngModel)]="settings.category">
+        <option>Medical</option>
+        <option>Patient Education</option>
+        <option>Clinical Concepts</option>
+        <option>Pharmacology</option>
+        <option>General Healthcare</option>
+      </select>
+    </label>
+
+    <label>Topic
+      <input [(ngModel)]="settings.topic" placeholder="e.g. Types of Cancer" />
+    </label>
+
+    <label>Target duration
+      <select [(ngModel)]="settings.duration">
+        <option [ngValue]="15">15 seconds</option>
+        <option [ngValue]="30">30 seconds</option>
+        <option [ngValue]="45">45 seconds</option>
+        <option [ngValue]="60">60 seconds</option>
+        <option [ngValue]="90">90 seconds</option>
+      </select>
+    </label>
+
+    <label>Source content <span class="optional">(optional)</span>
+      <textarea [(ngModel)]="settings.sourceContent" rows="7"
+        placeholder="Paste the clinical content you want explained. The AI stays faithful to it and will not add claims it does not support."></textarea>
+    </label>
+
+    <h2>2 · Presentation</h2>
+
+    <label>Visual treatment
+      <select [(ngModel)]="settings.visualStyle">
+        <option *ngFor="let style of visualStyles" [value]="style">{{ style }}</option>
+      </select>
+    </label>
+
+    <div class="grid-2">
+      <label>AI voice
+        <select [(ngModel)]="settings.voice">
+          <option *ngFor="let voice of voiceOptions" [value]="voice">{{ voice }}</option>
+        </select>
+      </label>
+      <label>AI avatar
+        <select [(ngModel)]="settings.avatar">
+          <option *ngFor="let preset of avatarPresets" [value]="preset.id">{{ preset.label }}</option>
+        </select>
+      </label>
+    </div>
+
+    <label>Resolution
+      <select [(ngModel)]="settings.resolution">
+        <option value="720p">720p (1280 × 720)</option>
+        <option value="1080p">1080p (1920 × 1080)</option>
+      </select>
+    </label>
+
+    <div class="checks">
+      <label class="check"><input type="checkbox" [(ngModel)]="settings.lipSync" /> Lip sync to the AI voice</label>
+      <label class="check"><input type="checkbox" [(ngModel)]="settings.subtitles" /> Burn in subtitles</label>
+    </div>
+
+    <div class="engine-note" *ngIf="capabilities">
+      <div><strong>Voice engine:</strong> {{ engineSummary }}</div>
+      <div>
+        <strong>Script writer:</strong>
+        <span *ngIf="capabilities.aiScriptWriter">{{ capabilities.scriptWriterModel }}</span>
+        <span *ngIf="!capabilities.aiScriptWriter">offline planner — set ANTHROPIC_API_KEY for AI scripting</span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="secondary" [disabled]="writingScript || generating" (click)="writeScript()">
+        {{ writingScript ? 'Writing…' : 'Write AI script' }}
+      </button>
+      <button class="primary" [disabled]="generating || writingScript" (click)="generate()">
+        {{ generating ? 'Generating…' : 'Generate video' }}
+      </button>
+    </div>
+    <button class="ghost full" *ngIf="generating" (click)="cancelGeneration()">Cancel</button>
+
+    <div class="progress" *ngIf="generating || progress > 0">
+      <div class="track"><div class="value" [style.width.%]="progress"></div></div>
+      <div class="progress-row"><span>{{ status }}</span><strong>{{ progress }}%</strong></div>
+    </div>
+
+    <p class="error" *ngIf="error">{{ error }}</p>
+  </section>
+
+  <!-- ------------------------------------------------------------- stage -->
+  <section class="stage-column">
+    <div class="card stage-card">
+      <div class="card-head">
+        <div>
+          <h2>3 · Preview &amp; render</h2>
+          <p>The AI presenter is drawn frame by frame from the narration audio. What you see here is exactly what gets recorded.</p>
+        </div>
+        <span class="chip" *ngIf="scenes.length">{{ scenes.length }} scenes · ~{{ totalPlannedSeconds }}s</span>
+      </div>
+
+      <div class="stage-frame">
+        <canvas #stage class="stage"></canvas>
+        <div class="recording-dot" *ngIf="generating"><span></span> REC</div>
+      </div>
+
+      <div class="output" *ngIf="result">
+        <div class="output-head">
+          <div>
+            <h3>Generated video</h3>
+            <p>
+              {{ (result.durationMs / 1000).toFixed(1) }}s ·
+              {{ (result.blob.size / 1048576).toFixed(1) }} MB ·
+              voice by {{ result.engineLabel }} ·
+              <strong class="ok">audio included</strong>
+            </p>
+          </div>
+          <button class="primary" (click)="download()">Download</button>
+        </div>
+        <video controls [src]="result.url"></video>
+
+        <div class="submit-box">
+          <h4>Send for clinical review</h4>
+          <p>Doctors only see videos a reviewer has approved. The rendered file carries an
+            “awaiting clinical review” watermark until then.</p>
+          <div class="submit-row">
+            <input [(ngModel)]="authorName" placeholder="Your name" />
+            <button class="secondary" [disabled]="submitting" (click)="submitForReview()">
+              {{ submitting ? 'Submitting…' : 'Submit for review' }}
+            </button>
+          </div>
+          <p class="ok" *ngIf="submitted">Submitted as “{{ submitted.title }}”. Open the Review queue to act on it.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- --------------------------------------------------------- storyboard -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <h2>4 · Storyboard</h2>
+          <p>Edit any narration before you render. Scene length follows the voice, not the estimate.</p>
+        </div>
+        <button class="ghost" *ngIf="scenes.length" (click)="addScene()">+ Add scene</button>
+      </div>
+
+      <div class="empty" *ngIf="!scenes.length">
+        <div class="empty-mark">✦</div>
+        <h3>No storyboard yet</h3>
+        <p>Add a topic, optionally paste source content, then select <strong>Write AI script</strong>.</p>
+      </div>
+
+      <div class="ai-summary" *ngIf="storyboard?.summary">
+        <strong>{{ storyboard?.title }}</strong>
+        <p>{{ storyboard?.summary }}</p>
+        <div class="flags" *ngIf="storyboard?.reviewNotes?.length">
+          <strong>For the reviewer to verify</strong>
+          <ul><li *ngFor="let note of storyboard?.reviewNotes">{{ note }}</li></ul>
+        </div>
+        <p class="warn" *ngIf="storyboard?.warning">{{ storyboard?.warning }}</p>
+      </div>
+
+      <div class="scenes" *ngIf="scenes.length">
+        <article class="scene" *ngFor="let scene of scenes; let i = index" [class.open]="expandedScene === i">
+          <header (click)="toggleScene(i)">
+            <span class="num">{{ i + 1 }}</span>
+            <div class="scene-title">
+              <h3>{{ scene.title }}</h3>
+              <span class="tag">{{ scene.visualType }}</span>
+              <span class="tag soft">~{{ estimatedSeconds(scene) }}s spoken</span>
+            </div>
+            <span class="caret">{{ expandedScene === i ? '−' : '+' }}</span>
+          </header>
+
+          <p class="narration">{{ scene.narration }}</p>
+
+          <div class="scene-actions">
+            <button class="ghost small" [disabled]="generating" (click)="previewScene(i)">
+              {{ isPreviewing(i) ? 'Stop preview' : '▶ Preview with voice' }}
+            </button>
+            <button class="ghost small" (click)="moveScene(i, -1)" [disabled]="i === 0">↑</button>
+            <button class="ghost small" (click)="moveScene(i, 1)" [disabled]="i === scenes.length - 1">↓</button>
+            <button class="ghost small danger" (click)="removeScene(i)">Remove</button>
+          </div>
+
+          <div class="editor" *ngIf="expandedScene === i">
+            <label>Scene title <input [(ngModel)]="scene.title" /></label>
+            <label>Narration (this is what the AI voice says)
+              <textarea [(ngModel)]="scene.narration" rows="4"></textarea>
+            </label>
+            <div class="grid-2">
+              <label>Visual type
+                <select [(ngModel)]="scene.visualType">
+                  <option *ngFor="let type of visualTypes" [value]="type">{{ type }}</option>
+                </select>
+              </label>
+              <label>Headline <input [(ngModel)]="scene.highlight" /></label>
+            </div>
+            <label>On-screen heading <input [(ngModel)]="scene.visualData.heading" /></label>
+
+            <label *ngIf="scene.visualType === 'anatomy'">Organ
+              <select [(ngModel)]="scene.visualData.organ">
+                <option *ngFor="let organ of organs" [value]="organ">{{ organ }}</option>
+              </select>
+            </label>
+
+            <label *ngIf="scene.visualType === 'whiteboard' || scene.visualType === 'avatar'">
+              Points <span class="optional">separate with |</span>
+              <input [ngModel]="listValue(scene, 'points')"
+                     (ngModelChange)="setListValue(scene, 'points', $event)" />
+            </label>
+
+            <label *ngIf="scene.visualType === 'diagram'">
+              Steps <span class="optional">separate with |</span>
+              <input [ngModel]="listValue(scene, 'steps')"
+                     (ngModelChange)="setListValue(scene, 'steps', $event)" />
+            </label>
+
+            <label *ngIf="scene.visualType === 'medical-animation' || scene.visualType === 'anatomy'">
+              Stage labels <span class="optional">separate with |</span>
+              <input [ngModel]="listValue(scene, 'labels')"
+                     (ngModelChange)="setListValue(scene, 'labels', $event)" />
+            </label>
+
+            <ng-container *ngIf="scene.visualType === 'comparison'">
+              <div class="grid-2">
+                <label>Left column title <input [(ngModel)]="scene.visualData.leftTitle" /></label>
+                <label>Right column title <input [(ngModel)]="scene.visualData.rightTitle" /></label>
+              </div>
+              <label>Left items <span class="optional">separate with |</span>
+                <input [ngModel]="listValue(scene, 'leftItems')"
+                       (ngModelChange)="setListValue(scene, 'leftItems', $event)" />
+              </label>
+              <label>Right items <span class="optional">separate with |</span>
+                <input [ngModel]="listValue(scene, 'rightItems')"
+                       (ngModelChange)="setListValue(scene, 'rightItems', $event)" />
+              </label>
+            </ng-container>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+</div>

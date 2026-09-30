@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.angular/
+.DS_Store
+*.log
+server/.env
+server/data/library.json
+server/data/media/

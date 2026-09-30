@@ -1,0 +1,53 @@
+<div class="library">
+  <section class="card">
+    <div class="card-head">
+      <div>
+        <h2>Approved video library</h2>
+        <p>Every video here has been reviewed and signed off by a clinician. Doctors can stream or download them.</p>
+      </div>
+      <button class="ghost small" (click)="reload()">Refresh</button>
+    </div>
+
+    <label class="search">Search
+      <input [(ngModel)]="search" placeholder="Topic, category or title" />
+    </label>
+
+    <p class="muted" *ngIf="loading">Loading…</p>
+    <p class="error" *ngIf="error">{{ error }}</p>
+
+    <div class="empty" *ngIf="!loading && !filtered.length">
+      <div class="empty-mark">▤</div>
+      <h3>No approved videos yet</h3>
+      <p>Once a reviewer approves a submission it appears here automatically.</p>
+    </div>
+
+    <div class="grid" *ngIf="filtered.length">
+      <article class="tile" *ngFor="let video of filtered">
+        <div class="thumb" (click)="play(video)">
+          <span class="play">▶</span>
+          <span class="len">{{ formatDuration(video.durationMs) }}</span>
+        </div>
+        <h3>{{ video.title }}</h3>
+        <p class="summary">{{ video.summary || video.topic }}</p>
+        <div class="meta">
+          <span class="badge">{{ video.category }}</span>
+          <span>{{ video.sceneCount }} scenes</span>
+        </div>
+        <div class="approval">Approved by {{ video.approvedBy }} · {{ formatDate(video.approvedAt) }}</div>
+        <div class="tile-actions">
+          <button class="secondary small" (click)="play(video)">Watch</button>
+          <a class="secondary small link" [href]="downloadUrl(video)">Download</a>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="card player" *ngIf="playing as video">
+    <div class="card-head">
+      <div><h2>{{ video.title }}</h2><p>{{ video.summary }}</p></div>
+      <button class="ghost small" (click)="playing = undefined">Close</button>
+    </div>
+    <video controls autoplay [src]="streamUrl(video)"></video>
+    <p class="approval">Reviewed and approved by {{ video.approvedBy }} on {{ formatDate(video.approvedAt) }}.</p>
+  </section>
+</div>
