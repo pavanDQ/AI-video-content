@@ -22,7 +22,7 @@ export class StudioComponent implements OnInit, OnDestroy {
     'AI decides', 'Whiteboard', 'Step diagram', 'Anatomy illustration', 'Medical animation', 'Doctor presentation'
   ];
   readonly visualTypes: VisualType[] = [
-    'avatar', 'whiteboard', 'diagram', 'comparison', 'medical-animation', 'anatomy'
+    'avatar', 'whiteboard', 'diagram', 'comparison', 'medical-animation', 'anatomy', 'image'
   ];
   readonly organs = ['cell', 'lungs', 'heart', 'brain', 'kidney', 'liver', 'stomach', 'bloodvessel'];
 
@@ -33,7 +33,7 @@ export class StudioComponent implements OnInit, OnDestroy {
     sourceContent: '',
     visualStyle: 'AI decides',
     voice: 'AI Female Voice',
-    avatar: 'Doctor Avatar',
+    avatar: '3D Presenter',
     lipSync: true,
     subtitles: true,
     medicalAnimations: true,

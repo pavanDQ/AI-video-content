@@ -10,7 +10,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { planLocally } from './local-planner.js';
 
-const VISUAL_TYPES = ['avatar', 'whiteboard', 'diagram', 'comparison', 'medical-animation', 'anatomy'];
+const VISUAL_TYPES = ['avatar', 'whiteboard', 'diagram', 'comparison', 'medical-animation', 'anatomy', 'image'];
 
 /**
  * Response schema. `additionalProperties: false` everywhere keeps the model
@@ -60,7 +60,12 @@ const STORYBOARD_SCHEMA = {
               organ: {
                 type: 'string',
                 description: 'For anatomy scenes: cell, lungs, heart, brain, kidney, liver, stomach or bloodvessel.'
-              }
+              },
+              imageIndex: {
+                type: 'integer',
+                description: 'For image scenes: the N of an [Image N] marker in the source content.'
+              },
+              caption: { type: 'string', description: 'For image scenes: a short caption shown under the image.' }
             }
           }
         }
@@ -84,6 +89,7 @@ How to choose visuals: each scene pairs narration with one visual treatment.
 - comparison: two labelled columns, for distinguishing between entities.
 - medical-animation: three pulsing stages, for change over time.
 - anatomy: an animated organ or cell schematic. Set visualData.organ.
+- image: a figure from the source content, shown large. Only when the source contains [Image N] markers: set visualData.imageIndex to N and use it in the scene whose narration covers the text around that marker. Show each image at most once. Never describe details of an image you cannot see; narrate the surrounding text instead.
 
 Clinical accuracy rules:
 - State only what is well established. Do not invent doses, statistics, percentages, trial names or guideline numbers.
@@ -91,7 +97,7 @@ Clinical accuracy rules:
 - Put anything a reviewer must confirm into reviewNotes.
 - Never phrase content as advice for an individual patient.`;
 
-function buildUserPrompt({ category, topic, duration, sourceContent, visualStyle, audience }) {
+function buildUserPrompt({ category, topic, duration, sourceContent, visualStyle, audience, images }) {
   const lines = [
     `Category: ${category}`,
     `Topic: ${topic}`,
@@ -112,6 +118,14 @@ function buildUserPrompt({ category, topic, duration, sourceContent, visualStyle
       sourceContent.trim(),
       '"""'
     );
+    if (images?.length) {
+      lines.push(
+        '',
+        `The source contains ${images.length} image(s), marked [Image 1] to [Image ${images.length}] where they appear.`,
+        ...images.map((image, index) => `[Image ${index + 1}]${image.alt ? `: ${image.alt}` : ''}`),
+        'Give each image its own image scene. Never read the markers aloud.'
+      );
+    }
   } else {
     lines.push('', 'No source content was supplied. Write a well-established overview of the topic.');
   }
@@ -180,6 +194,22 @@ export async function writeScript(request) {
   }
 }
 
+/**
+ * Swap the model's image number for the real URL. The model never handles
+ * URLs, so it cannot invent or mistype one; an unknown number falls back to a
+ * whiteboard.
+ */
+function resolveImage(scene, images) {
+  const { imageIndex, ...visualData } = scene.visualData || {};
+  if (scene.visualType !== 'image') return { visualType: scene.visualType, visualData };
+  const image = images[Number(imageIndex) - 1];
+  if (!image) return { visualType: 'whiteboard', visualData };
+  return {
+    visualType: 'image',
+    visualData: { ...visualData, imageUrl: image.url, caption: visualData.caption || image.alt || '' }
+  };
+}
+
 /** Clamp AI output to what the renderer can actually draw. */
 function normalize(storyboard, request) {
   const target = Math.max(15, Number(request.duration) || 30);
@@ -187,11 +217,10 @@ function normalize(storyboard, request) {
     .filter(scene => scene?.narration?.trim())
     .map(scene => ({
       title: String(scene.title || 'Scene').slice(0, 80),
-      narration: String(scene.narration).replace(/\s+/g, ' ').trim(),
-      visualType: VISUAL_TYPES.includes(scene.visualType) ? scene.visualType : 'whiteboard',
+      narration: String(scene.narration).replace(/\[Image \d+\]/g, '').replace(/\s+/g, ' ').trim(),
+      ...resolveImage({ ...scene, visualType: VISUAL_TYPES.includes(scene.visualType) ? scene.visualType : 'whiteboard' }, request.images || []),
       seconds: Math.max(3, Math.min(30, Number(scene.seconds) || 6)),
-      highlight: scene.highlight ? String(scene.highlight).slice(0, 90) : '',
-      visualData: scene.visualData || {}
+      highlight: scene.highlight ? String(scene.highlight).slice(0, 90) : ''
     }));
 
   // Scene length is ultimately set by how long the voice takes to say the

@@ -4,10 +4,12 @@
 
 import * as elevenlabs from './elevenlabs.js';
 import * as macos from './macos.js';
+import * as piper from './piper.js';
 import { buildVisemeTimeline, buildWordTimeline } from '../visemes.js';
+import { alignToAudio } from './align.js';
 
 /** Best first. `auto` walks this list and takes the first available engine. */
-const ENGINES = [elevenlabs, macos];
+const ENGINES = [elevenlabs, macos, piper];
 
 export function availableEngines() {
   return ENGINES.map(engine => ({
@@ -55,7 +57,7 @@ export async function speak({ text, voice, engine: requestedEngine }) {
   const engine = pickEngine(requestedEngine);
   if (!engine) {
     throw new Error(
-      'No voice engine available. Set ELEVENLABS_API_KEY, or run the server on macOS to use the offline `say` engine.'
+      'No voice engine available. Set ELEVENLABS_API_KEY, run the server on macOS to use `say`, or install Piper into server/vendor/piper.'
     );
   }
 
@@ -65,6 +67,10 @@ export async function speak({ text, voice, engine: requestedEngine }) {
   // indices line up with the characters we are converting to visemes.
   const spoken = result.spokenText || script;
   const durationMs = result.durationMs || estimateDuration(script);
+  // Engines without timestamps: measure the pauses in the audio itself, so
+  // the mouth does not drift away from the voice over a scene.
+  const charTimes = result.charTimes
+    || (result.mimeType === 'audio/wav' ? alignToAudio(spoken, result.audio) : null);
 
   return {
     engine: engine.id,
@@ -73,8 +79,8 @@ export async function speak({ text, voice, engine: requestedEngine }) {
     mimeType: result.mimeType,
     durationMs,
     audioBase64: result.audio.toString('base64'),
-    visemes: buildVisemeTimeline(spoken, durationMs, result.charTimes),
-    words: buildWordTimeline(spoken, durationMs, result.charTimes),
+    visemes: buildVisemeTimeline(spoken, durationMs, charTimes),
+    words: buildWordTimeline(spoken, durationMs, charTimes),
     script
   };
 }

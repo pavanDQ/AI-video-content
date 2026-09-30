@@ -6,7 +6,8 @@ export type VisualType =
   | 'diagram'
   | 'comparison'
   | 'medical-animation'
-  | 'anatomy';
+  | 'anatomy'
+  | 'image';
 
 export type OrganKind = 'cell' | 'lungs' | 'heart' | 'brain' | 'kidney' | 'liver' | 'stomach' | 'bloodvessel';
 
@@ -20,6 +21,9 @@ export interface VisualData {
   rightTitle?: string;
   rightItems?: string[];
   organ?: OrganKind;
+  /** Image scenes: the original URL of a figure from the source content. */
+  imageUrl?: string;
+  caption?: string;
 }
 
 export interface Scene {

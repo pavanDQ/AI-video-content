@@ -84,7 +84,12 @@ export class VideoProducerService {
     if (context.state === 'suspended') await context.resume();
 
     // --- 1. Render every narration track up front ---------------------------
-    const prepared = await this.prepareScenes(scenes, settings, context, onProgress);
+    const [prepared] = await Promise.all([
+      this.prepareScenes(scenes, settings, context, onProgress),
+      this.sceneRenderer.preloadImages(scenes),
+      // Never record the drawn stand-in while the 3D presenter is loading.
+      this.avatars.preload(settings.avatar)
+    ]);
     if (!prepared.length) throw new Error('No narration could be rendered for this storyboard.');
 
     const totalMs = prepared[prepared.length - 1].startMs + prepared[prepared.length - 1].durationMs;
@@ -358,7 +363,10 @@ export class VideoProducerService {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Could not get a 2D drawing context.');
 
-    const track = await firstValueFrom(this.api.synthesizeVoice(scene.narration, settings.voice));
+    const [track] = await Promise.all([
+      firstValueFrom(this.api.synthesizeVoice(scene.narration, settings.voice)),
+      this.avatars.preload(settings.avatar)
+    ]);
     const buffer = await context.decodeAudioData(this.toArrayBuffer(track.audioBase64));
     const envelope = this.lipSync.buildEnvelope(buffer);
     const durationMs = buffer.duration * 1000;

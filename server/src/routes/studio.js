@@ -1,7 +1,9 @@
 /** Script writing and voice synthesis endpoints. */
 
 import { Router } from 'express';
+import { fetchPublicImage } from '../services/image-proxy.js';
 import { isAiAvailable, writeScript } from '../services/script-writer.js';
+import { parseSourceContent } from '../services/source-content.js';
 import { availableEngines, speak } from '../services/tts/index.js';
 import { listVoices } from '../services/tts/macos.js';
 
@@ -22,7 +24,9 @@ studioRouter.get('/capabilities', async (_request, response) => {
 studioRouter.post('/script', async (request, response, next) => {
   try {
     const { category, topic, duration, sourceContent, visualStyle, audience } = request.body || {};
-    if (!topic?.trim() && !sourceContent?.trim()) {
+    // Pasted CMS HTML becomes plain prose plus a list of images to show.
+    const source = parseSourceContent(sourceContent);
+    if (!topic?.trim() && !source.text) {
       return response.status(400).json({ error: 'Provide a topic or some source content.' });
     }
 
@@ -30,10 +34,18 @@ studioRouter.post('/script', async (request, response, next) => {
       category: category || 'Medical',
       topic: (topic || '').trim(),
       duration: Number(duration) || 30,
-      sourceContent: sourceContent || '',
+      sourceContent: source.text,
+      images: source.images,
       visualStyle: visualStyle || 'AI decides',
       audience
     });
+
+    if (source.references.length) {
+      storyboard.reviewNotes = [
+        ...(storyboard.reviewNotes || []),
+        ...source.references.map(reference => `Source reference: ${reference}`)
+      ];
+    }
 
     response.json(storyboard);
   } catch (error) {
@@ -53,6 +65,27 @@ studioRouter.post('/voice', async (request, response, next) => {
     const { text, voice, engine } = request.body || {};
     if (!text?.trim()) return response.status(400).json({ error: 'Narration text is required.' });
     response.json(await speak({ text, voice, engine }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Serve a source-content image from this origin, so the canvas that draws it
+ * stays recordable. See services/image-proxy.js for what is allowed.
+ */
+studioRouter.get('/image', async (request, response, next) => {
+  try {
+    const url = String(request.query.url || '');
+    if (!url) return response.status(400).json({ error: 'url is required.' });
+    const { body, contentType } = await fetchPublicImage(url);
+    response.set({
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=86400',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox"
+    });
+    response.send(body);
   } catch (error) {
     next(error);
   }

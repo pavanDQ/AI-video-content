@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { Avatar3dService } from './avatar-3d.service';
 import { MouthState } from './lip-sync.service';
 
 export interface AvatarPreset {
@@ -13,9 +14,19 @@ export interface AvatarPreset {
   shirt: string;
   accent: string;
   stethoscope: boolean;
+  /**
+   * A 3D model to present with. The drawn fields above are its fallback while
+   * the model loads, or when WebGL is unavailable.
+   */
+  model?: string;
 }
 
 export const AVATAR_PRESETS: AvatarPreset[] = [
+  {
+    id: '3D Presenter', label: '3D presenter (realistic)', model: 'assets/avatars/presenter.glb',
+    skin: '#d9a273', skinShadow: '#b57f52', hair: '#1d1712', hairStyle: 'tiedBack',
+    coat: 'clinical', coatColor: '#f7fafc', shirt: '#b8cfe6', accent: '#123b63', stethoscope: true
+  },
   {
     id: 'Doctor Avatar', label: 'Doctor (white coat)',
     skin: '#e8b98f', skinShadow: '#c99266', hair: '#2b2118', hairStyle: 'short',
@@ -62,7 +73,25 @@ export interface AvatarFrame {
  */
 @Injectable({ providedIn: 'root' })
 export class AvatarRendererService {
+  constructor(private readonly avatar3d: Avatar3dService) {}
+
+  /** Resolve once the preset's 3D model (if any) is ready or has failed. */
+  async preload(id: string): Promise<void> {
+    const model = this.presetFor(id).model;
+    if (model) await this.avatar3d.load(model);
+  }
+
   draw(ctx: CanvasRenderingContext2D, frame: AvatarFrame): void {
+    const model = frame.preset.model;
+    if (model) {
+      if (this.avatar3d.isReady(model)) {
+        this.avatar3d.draw(ctx, model, frame);
+        return;
+      }
+      // Show the drawn presenter until the model arrives.
+      void this.avatar3d.load(model);
+    }
+
     const { x, y, scale, mouth, timeMs, preset, speaking } = frame;
     const seconds = timeMs / 1000;
 

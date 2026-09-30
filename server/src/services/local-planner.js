@@ -26,13 +26,59 @@ function shorten(text, max = 90) {
   return clean.length > max ? `${clean.slice(0, max - 1).trimEnd()}…` : clean;
 }
 
-function splitSentences(content) {
-  return content
-    .replace(/\s+/g, ' ')
-    .split(/(?<=[.!?])\s+/)
-    .map(sentence => sentence.trim())
-    .filter(sentence => sentence.length > 15)
-    .slice(0, 10);
+/**
+ * Split content into narratable sentences, and note where each `[Image N]`
+ * marker sits so the image can be shown next to the text it illustrates.
+ */
+function readContent(content) {
+  const lines = content.split(/\n+/).map(line => line.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const sentences = [];
+  const sections = [];
+  const imageAnchors = [];
+  let section = '';
+
+  for (const line of lines) {
+    const marker = line.match(/^\[Image (\d+)\]$/);
+    if (marker) {
+      imageAnchors.push({ number: Number(marker[1]), sentence: sentences.length });
+      continue;
+    }
+    // A short unpunctuated line among others is a subheading: structure, not narration.
+    if (lines.length > 1 && line.length < 100 && !/[.!?]["')\]]?$/.test(line)) {
+      section = line;
+      continue;
+    }
+    line
+      .split(/(?<=[.!?])\s+/)
+      .map(sentence => sentence.trim())
+      .filter(sentence => sentence.length > 15)
+      .forEach(sentence => {
+        sentences.push(sentence);
+        sections.push(section);
+      });
+  }
+
+  return { sentences: sentences.slice(0, 10), sections, imageAnchors };
+}
+
+/**
+ * Give each image to the scene covering the text it sat beside. If that scene
+ * already has one, use the next free scene, then the nearest earlier one.
+ */
+function assignImages(sceneCount, sentencesPerScene, imageAnchors, images) {
+  const slots = new Array(sceneCount).fill(null);
+  for (const anchor of imageAnchors) {
+    const image = images[anchor.number - 1];
+    if (!image || !sceneCount) continue;
+    const preferred = Math.min(sceneCount - 1, Math.floor(anchor.sentence / sentencesPerScene));
+    const order = [
+      ...Array.from({ length: sceneCount - preferred }, (_, i) => preferred + i),
+      ...Array.from({ length: preferred }, (_, i) => preferred - 1 - i)
+    ];
+    const free = order.find(index => !slots[index]);
+    if (free !== undefined) slots[free] = image;
+  }
+  return slots;
 }
 
 function chunk(items, size) {
@@ -121,9 +167,12 @@ function planFromTopic(topic, visualStyle) {
 }
 
 /** Build a storyboard from content the user supplied. */
-function planFromContent(topic, content, visualStyle) {
-  const sentences = splitSentences(content);
+function planFromContent(topic, content, visualStyle, images) {
+  const { sentences, sections, imageAnchors } = readContent(content);
   if (!sentences.length) return planFromTopic(topic, visualStyle);
+
+  const groups = chunk(sentences, 2).slice(0, 4);
+  const imageSlots = assignImages(groups.length, 2, imageAnchors, images);
 
   const scenes = [{
     title: 'Introduction', seconds: 6, visualType: 'avatar',
@@ -131,16 +180,23 @@ function planFromContent(topic, content, visualStyle) {
     highlight: 'Overview', visualData: { heading: topic }
   }];
 
-  chunk(sentences, 2).slice(0, 4).forEach((group, index) => {
+  groups.forEach((group, index) => {
     const text = group.join(' ');
-    const visualType = chooseVisualType(text, index, visualStyle);
+    const image = imageSlots[index];
+    const visualType = image ? 'image' : chooseVisualType(text, index, visualStyle);
     scenes.push({
       title: `Key point ${index + 1}`,
       seconds: 8,
       narration: shorten(text, 320),
       visualType,
       highlight: shorten(text.split(/[,.;]/)[0] || 'Key point', 60),
-      visualData: buildVisualData(text, visualType, topic)
+      visualData: image
+        ? {
+          heading: shorten(sections[index * 2] || topic, 60),
+          imageUrl: image.url,
+          caption: image.alt || ''
+        }
+        : buildVisualData(text, visualType, topic)
     });
   });
 
@@ -154,11 +210,11 @@ function planFromContent(topic, content, visualStyle) {
   return scenes;
 }
 
-export function planLocally({ topic, duration, sourceContent, visualStyle }) {
+export function planLocally({ topic, duration, sourceContent, visualStyle, images = [] }) {
   const cleanTopic = (topic || '').trim() || 'this medical topic';
   const content = (sourceContent || '').trim();
   const scenes = content
-    ? planFromContent(cleanTopic, content, visualStyle)
+    ? planFromContent(cleanTopic, content, visualStyle, images)
     : planFromTopic(cleanTopic, visualStyle);
 
   const target = Math.max(15, Number(duration) || 30);

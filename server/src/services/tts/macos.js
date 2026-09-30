@@ -86,7 +86,7 @@ async function resolveVoice(requested) {
 }
 
 /** Read the sample count out of a canonical 16-bit PCM WAV header. */
-function wavDurationMs(buffer) {
+export function wavDurationMs(buffer) {
   let offset = 12;
   let sampleRate = SAMPLE_RATE;
   let channels = 1;

@@ -32,9 +32,51 @@ const MUTED = '#5b6b7f';
 const ACCENT = '#2f6fad';
 const ACCENT_SOFT = '#e8f1fa';
 
+interface LoadedImage {
+  image: HTMLImageElement;
+  ready: boolean;
+  failed: boolean;
+  done: Promise<void>;
+}
+
 @Injectable({ providedIn: 'root' })
 export class SceneRendererService {
+  private readonly images = new Map<string, LoadedImage>();
+
   constructor(private readonly avatars: AvatarRendererService) {}
+
+  /**
+   * Load every source image a storyboard uses before recording starts, so no
+   * image scene is captured while its picture is still downloading.
+   */
+  async preloadImages(scenes: Scene[]): Promise<void> {
+    const urls = scenes
+      .filter(scene => scene.visualType === 'image' && scene.visualData.imageUrl)
+      .map(scene => scene.visualData.imageUrl as string);
+    // A previous failure may have been transient; try those again once.
+    urls.forEach(url => { if (this.images.get(url)?.failed) this.images.delete(url); });
+    await Promise.all(urls.map(url => this.loadImage(url).done));
+  }
+
+  /**
+   * Images come through the API's same-origin proxy: drawing a cross-origin
+   * image without CORS headers taints the canvas, and a tainted canvas cannot
+   * be recorded.
+   */
+  private loadImage(url: string): LoadedImage {
+    const cached = this.images.get(url);
+    if (cached) return cached;
+
+    const image = new Image();
+    const entry: LoadedImage = { image, ready: false, failed: false, done: Promise.resolve() };
+    entry.done = new Promise<void>(resolve => {
+      image.onload = () => { entry.ready = true; resolve(); };
+      image.onerror = () => { entry.failed = true; resolve(); };
+    });
+    image.src = `/api/studio/image?url=${encodeURIComponent(url)}`;
+    this.images.set(url, entry);
+    return entry;
+  }
 
   /**
    * Draw one frame.
@@ -69,6 +111,7 @@ export class SceneRendererService {
       case 'comparison': this.drawComparisonScene(ctx, frame); break;
       case 'medical-animation': this.drawProgressionScene(ctx, frame); break;
       case 'anatomy': this.drawAnatomyScene(ctx, frame); break;
+      case 'image': this.drawImageScene(ctx, frame); break;
     }
 
     ctx.restore();
@@ -591,7 +634,11 @@ export class SceneRendererService {
       ctx.restore();
     });
 
-    // A small presenter keeps the narrator present during illustration scenes.
+    this.drawPresenterBadge(ctx, frame);
+  }
+
+  /** A small presenter keeps the narrator present during illustration scenes. */
+  private drawPresenterBadge(ctx: CanvasRenderingContext2D, frame: SceneFrame): void {
     ctx.save();
     ctx.beginPath();
     ctx.arc(150, 505, 58, 0, Math.PI * 2);
@@ -609,6 +656,61 @@ export class SceneRendererService {
     ctx.beginPath();
     ctx.arc(150, 505, 58, 0, Math.PI * 2);
     ctx.stroke();
+  }
+
+  /** A figure from the source content, with the heading and presenter beside it. */
+  private drawImageScene(ctx: CanvasRenderingContext2D, frame: SceneFrame): void {
+    this.drawCard(ctx, 32, 96, WIDTH - 64, 480);
+    const data = frame.scene.visualData;
+
+    const textX = 64;
+    const textWidth = 340;
+    const y = this.drawSceneHeading(ctx, data.heading || frame.scene.title, textX, 158, textWidth);
+    if (frame.scene.highlight) {
+      ctx.fillStyle = ACCENT;
+      ctx.font = '600 20px "Helvetica Neue", Arial, sans-serif';
+      this.wrap(ctx, frame.scene.highlight, textWidth).slice(0, 4)
+        .forEach((line, index) => ctx.fillText(line, textX, y + index * 28));
+    }
+
+    const box = { x: 432, y: 116, width: 764, height: 440 };
+    const captionHeight = data.caption ? 40 : 0;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(box.x, box.y, box.width, box.height, 16);
+    ctx.clip();
+    ctx.fillStyle = '#f1f5f9';
+    ctx.fillRect(box.x, box.y, box.width, box.height);
+
+    const entry = data.imageUrl ? this.loadImage(data.imageUrl) : null;
+    if (entry?.ready && entry.image.naturalWidth) {
+      const { image } = entry;
+      const areaHeight = box.height - captionHeight;
+      const fit = Math.min(box.width / image.naturalWidth, areaHeight / image.naturalHeight);
+      // A slow push-in stops a still figure from reading as a frozen frame.
+      const zoom = 1 + 0.04 * Math.min(1, frame.sceneTimeMs / Math.max(1, frame.sceneDurationMs));
+      const width = image.naturalWidth * fit * zoom;
+      const height = image.naturalHeight * fit * zoom;
+      ctx.drawImage(image, box.x + (box.width - width) / 2, box.y + (areaHeight - height) / 2, width, height);
+    } else {
+      ctx.fillStyle = MUTED;
+      ctx.font = '600 18px "Helvetica Neue", Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(entry?.failed ? 'Image unavailable' : 'Loading image…', box.x + box.width / 2, box.y + box.height / 2);
+      ctx.textAlign = 'left';
+    }
+
+    if (data.caption) {
+      ctx.fillStyle = 'rgba(18,38,63,.78)';
+      ctx.fillRect(box.x, box.y + box.height - captionHeight, box.width, captionHeight);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '500 16px "Helvetica Neue", Arial, sans-serif';
+      ctx.fillText(this.clip(ctx, data.caption, box.width - 32), box.x + 16, box.y + box.height - 14);
+    }
+    ctx.restore();
+
+    this.drawPresenterBadge(ctx, frame);
   }
 
   /** Schematic organ illustrations, drawn about a 0,0 centre at ~220px tall. */

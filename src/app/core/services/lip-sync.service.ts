@@ -49,6 +49,9 @@ const SHAPES: Record<string, MouthShape> = {
  */
 const BLEND_MS = 55;
 
+/** Lip closures must fully form even on quiet syllables, or "b" reads as "a". */
+const CLOSURES = new Set(['MBP', 'FV']);
+
 /** The mouth state at one instant, ready to draw. */
 export interface MouthState extends MouthShape {
   /** Jaw rotation in radians, driven by how open the mouth is. */
@@ -56,6 +59,11 @@ export interface MouthState extends MouthShape {
   /** 0-1 loudness at this instant, used for head motion and eyebrows. */
   energy: number;
   viseme: string;
+  /**
+   * How strongly each viseme is formed right now, 0-1. A 3D face blends these
+   * directly; the 2D mouth uses the pre-mixed geometry above instead.
+   */
+  visemes: Record<string, number>;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -122,7 +130,7 @@ export class LipSyncService {
       // sync we are not doing would be worse than visibly not doing it.
       const idle = { ...SHAPES['REST'] };
       idle.height += Math.sin(timeMs / 900) * 0.01;
-      return { ...idle, jaw: 0, energy, viseme: 'REST' };
+      return { ...idle, jaw: 0, energy, viseme: 'REST', visemes: {} };
     }
 
     const index = this.frameIndexAt(timeline, timeMs);
@@ -132,10 +140,11 @@ export class LipSyncService {
     let shape = SHAPES[current.viseme] || SHAPES['REST'];
 
     // Blend into the next shape over the last BLEND_MS of this frame.
+    let progress = 0;
     if (next) {
       const remaining = current.t + current.d - timeMs;
       if (remaining < BLEND_MS) {
-        const progress = this.easeInOut(1 - Math.max(0, remaining) / BLEND_MS);
+        progress = this.easeInOut(1 - Math.max(0, remaining) / BLEND_MS);
         shape = this.mix(shape, SHAPES[next.viseme] || SHAPES['REST'], progress);
       }
     }
@@ -145,6 +154,13 @@ export class LipSyncService {
     const isConsonant = ['MBP', 'FV', 'TH', 'SS', 'DD', 'KG'].includes(current.viseme);
     const gain = isConsonant ? 0.55 + energy * 0.45 : 0.25 + energy * 0.75;
 
+    const visemes: Record<string, number> = {};
+    const strength = (viseme: string) => (CLOSURES.has(viseme) ? 0.9 + energy * 0.1 : gain);
+    visemes[current.viseme] = (1 - progress) * strength(current.viseme);
+    if (next && progress > 0) {
+      visemes[next.viseme] = (visemes[next.viseme] || 0) + progress * strength(next.viseme);
+    }
+
     const height = shape.height * gain;
     return {
       ...shape,
@@ -152,7 +168,8 @@ export class LipSyncService {
       width: shape.width * (0.9 + 0.1 * gain),
       jaw: height * 0.09,
       energy,
-      viseme: current.viseme
+      viseme: current.viseme,
+      visemes
     };
   }
 

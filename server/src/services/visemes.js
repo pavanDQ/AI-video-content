@@ -163,6 +163,9 @@ export function buildVisemeTimeline(text, durationMs, charTimes = null) {
       const end = Math.max(start + 20, at(unit.end));
       return { t: Math.round(start), d: Math.round(end - start), viseme: unit.viseme };
     });
+    // Keep the mouth closed through the engine's lead-in silence.
+    const firstStart = Math.min(...frames.map(frame => frame.t));
+    if (firstStart > 0) frames.push({ t: 0, d: firstStart, viseme: 'REST' });
     return normalize(frames, durationMs);
   }
 

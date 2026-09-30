@@ -29,7 +29,7 @@
 
     <label>Source content <span class="optional">(optional)</span>
       <textarea [(ngModel)]="settings.sourceContent" rows="7"
-        placeholder="Paste the clinical content you want explained. The AI stays faithful to it and will not add claims it does not support."></textarea>
+        placeholder="Paste the clinical content you want explained, as plain text or article HTML. Images in the HTML are shown in the video. The AI stays faithful to it and will not add claims it does not support."></textarea>
     </label>
 
     <h2>2 · Presentation</h2>
@@ -207,6 +207,13 @@
                 <option *ngFor="let organ of organs" [value]="organ">{{ organ }}</option>
               </select>
             </label>
+
+            <ng-container *ngIf="scene.visualType === 'image'">
+              <label>Image URL <input [(ngModel)]="scene.visualData.imageUrl" placeholder="https://…" /></label>
+              <label>Caption <span class="optional">(optional)</span>
+                <input [(ngModel)]="scene.visualData.caption" />
+              </label>
+            </ng-container>
 
             <label *ngIf="scene.visualType === 'whiteboard' || scene.visualType === 'avatar'">
               Points <span class="optional">separate with |</span>
